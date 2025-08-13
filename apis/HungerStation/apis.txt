@@ -1,0 +1,14 @@
+Here’s how you can write it:
+
+1. **Menus API**:
+   https://hungerstation.com/menuxp/v1/menus?order_flow=1&vendor_id=79905&delivery_provider=2
+
+   https://hungerstation.com/menuxp/v2/menu/79905?delivery_type=hungerstation&order_flow=1&lat=1&long=1
+
+   This API is used to fetch menu details.
+
+2. **Venue API**:
+   https://hungerstation.com/api/v2/vendors/105126?latitude=21.627143599960426&longitude=39.16444860000001
+
+
+   This API is used to fetch venue details.
