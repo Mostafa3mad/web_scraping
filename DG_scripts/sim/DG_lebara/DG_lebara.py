@@ -136,9 +136,9 @@ def extract_specs(raw_data, max_attributes=20):
 
 
 async def fetch_single_product(url: str):
-
-
-    response = await fetch_url(url, content_type="product")
+    confing = DEFAULT_CONFIG.copy()
+    confing["use_scrapingbee"] = False
+    response = await fetch_url(url, content_type="product", headers={},config=confing)
 
     soup = BeautifulSoup(response, "html.parser")
     items = [li.get_text(strip=True) for li in soup.select(".summary li")]
@@ -170,7 +170,7 @@ async def fetch_single_product(url: str):
                 }
                 api_video = f"https://phones.lebara.co.uk/functions_handset/get_video?{row["sku"]}"
 
-                response_video = await fetch_url(api_video,method="POST", content_type="product", data=data)
+                response_video = await fetch_url(api_video,method="POST", content_type="product", data=data, headers={},config=confing)
                 response_video_json = json.loads(response_video)
                 clean_html = html.unescape(response_video_json["html"])
 
@@ -239,7 +239,7 @@ async def fetch_single_product(url: str):
 
                 api_spec = f"https://phones.lebara.co.uk/functions_handset/get_spec?{row["sku"]}"
 
-                response_spec = await fetch_url(api_spec,method="POST", content_type="product", data=data)
+                response_spec = await fetch_url(api_spec,method="POST", content_type="product", data=data, headers={},config=confing)
                 specs = extract_specs(response_spec)
                 for idx, spec in enumerate(specs, start=1):
                     row[f"attributeType{idx}"] = spec["attributeType"]
@@ -250,11 +250,61 @@ async def fetch_single_product(url: str):
 
 
 
+def extract_offers(obj):
+    offers = []
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            if k == "offers" and isinstance(v, list):
+                offers.extend(v)
+            else:
+                offers.extend(extract_offers(v))
+    elif isinstance(obj, list):
+        for item in obj:
+            offers.extend(extract_offers(item))
+    return offers
+
+async def fetch_sim_plan(url_plan: str):
+    html = await fetch_url(url_plan,config=DEFAULT_CONFIG,headers={},content_type="product")
+    json_data = json.loads(html)
+    offers = extract_offers(json_data)
+    for offer in offers:
+        row = {}
+        row["source"] = "lebara"
+        row["date"] = datetime.now().strftime("%Y-%m-%d")
+        row["apiURL"] = f"https://www.lebara.co.uk/en/best-sim-only-deals/p/{offer.get("id","")}.model.json"
+        row["url"] = "https://www.lebara.co.uk"+offer.get("detailsLink","")
+        row["sku"] = offer.get("id","")
+        row["sim_price"] = offer.get("cost","")
+        row["simContractname"] = offer.get("planName","")
+        plan_name = offer.get("planName", "")
+        match_name = re.search(r"(\d+)\s*-\s*Month", plan_name, re.IGNORECASE)
+        if match_name:
+            row["simContractDuration"] = int(match_name.group(1))
+        elif re.search(r"Monthly", plan_name, re.IGNORECASE):
+            row["simContractDuration"] = 1
+        else:
+            row["simContractDuration"] = ""
+        row["isPhoneContractAvailableWOsim"] = "Y"
+        row["plan_type"] = "SIM ONLY"
+        row["sim_data"] = "Unlimited"
+
+        for allowance in offer.get("allowanceList", []):
+            if allowance.get("name", "").lower() == "data":
+                row["sim_data"] = allowance.get("formatedValue")
+                break
+
+        row["simOfferData"] = offer.get("appPromotionMessage","")
+        allowances = []
+        for a in offer.get("allowanceList", []):
+            name = a.get("name")
+            value = a.get("formatedValue")
+            if name and value:
+                allowances.append(f"{value} {name}")
+
+        row["simDesc"] = " | ".join(allowances)
 
 
-
-
-
+        append_to_csv(row, "products.csv")
 
 
 async def extact_data_from_product_url(all_product_urls: list[str]):
@@ -303,14 +353,22 @@ def get_product_links(urls):
     return list(set(product_links))
 
 
+
+
 async def main():
     create_csv_file("products.csv")
+
+    url_plan = "https://www.lebara.co.uk/en/best-sim-only-deals.model.json"
+    await fetch_sim_plan(url_plan)
+
+
     url = "https://phones.lebara.co.uk/sitemap.xml"
     site_maps = await fetch_sitemap(url)
     products = get_product_links(site_maps)
-
-
     data = await extact_data_from_product_url(products)
+
+
+
 
 
 if __name__ == "__main__":
