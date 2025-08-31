@@ -284,7 +284,7 @@ async def fetch_sim_plan(url_plan: str):
             row["simContractDuration"] = 1
         else:
             row["simContractDuration"] = ""
-        row["isPhoneContractAvailableWOsim"] = "Y"
+        row["isPhoneContractAvailableWOsim"] = ""
         row["plan_type"] = "SIM ONLY"
         row["sim_data"] = "Unlimited"
 
