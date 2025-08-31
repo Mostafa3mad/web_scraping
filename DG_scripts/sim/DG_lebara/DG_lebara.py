@@ -186,7 +186,7 @@ async def fetch_single_product(url: str):
                 row["lowestPriceValue"] = ""
                 row["reviewRating"] = ""
                 row["reviewCount"] = ""
-                row["handsetOnlyCostCash"] = data_product["ecommerce"]["impressions"][0]["price"]
+                row["handsetOnlyCostCash"] = data_product["ecommerce"]["impressions"][0]["price"].replace(",",".").strip()
                 promo = soup.select_one(".promo-pill")
                 if promo:
                     text = promo.get_text(strip=True)
@@ -274,7 +274,7 @@ async def fetch_sim_plan(url_plan: str):
         row["apiURL"] = f"https://www.lebara.co.uk/en/best-sim-only-deals/p/{offer.get("id","")}.model.json"
         row["url"] = "https://www.lebara.co.uk"+offer.get("detailsLink","")
         row["sku"] = offer.get("id","")
-        row["sim_price"] = offer.get("cost","")
+        row["sim_price"] = offer.get("cost","").replace(",",".").strip()
         row["simContractname"] = offer.get("planName","")
         plan_name = offer.get("planName", "")
         match_name = re.search(r"(\d+)\s*-\s*Month", plan_name, re.IGNORECASE)
