@@ -223,9 +223,12 @@ async def fetch_single_product(url: str):
 
                     for bundle in plans:
                         row["phoneContractDuration"] = bundle.get("durationInt", 0)
+                        if "bundle" in url:
+                            row["handsetOnlyCostCash"] = float(bundle["price"])
+
                         for Upfront in range(0, int(max_value) + 1, 10):
                             row["advance"] = Upfront
-                            paymentAmount = round(((row["handsetOnlyCostCash"]-row["advance"])/24),2)
+                            paymentAmount = round(((row["handsetOnlyCostCash"] - row["advance"]) / 24), 2)
                             row["paymentAmount"] = 0 if row["phoneContractDuration"] == 0 else paymentAmount
                             row["plan_type"] = "contract"
                             row["sim_data"] = simplan.get("data-tariff", "")
@@ -236,6 +239,7 @@ async def fetch_single_product(url: str):
                             texts_minutes = attributes.get("texts-minutes") or ""
                             data_tariff = attributes.get("data-tariff") or ""
                             duration = attributes.get("duration") or ""
+                            row["sim_data"] = data_tariff
 
                             if texts_minutes or data_tariff or duration:
                                 sim_contract_name = (
