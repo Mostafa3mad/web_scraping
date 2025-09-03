@@ -24,7 +24,7 @@ logger = setup_logger("logs/scraper.log")
 def get_standard_csv_headers():
     headers = [
         "source", "date", "apiURL", "url", "sku", "name", "brand","stock",
-        "advance","paymentAmount","contractPrice","phoneContractDuration","sim_price","simContractname","simContractDuration","phoneContractPrice","isPhoneContractAvailableWOsim"
+        "advance","paymentAmount","phoneContractDuration","sim_price","simContractname","simContractDuration","phoneContractPrice","isPhoneContractAvailableWOsim"
         ,"phoneContractSimPackage","handsetOnlyCostCash","handsetOnlyContract",
         "previousPrice", "onSale", "saleText",
         "plan_type","sim_data","simOfferData", "sim1YearIncrease", "sim2YearIncrease", "sim3YearIncrease","simDesc",
@@ -278,10 +278,7 @@ async def fetch_single_product(url: str):
                                     row["simContractname"] = simContractname
                                     row["simContractDuration"] = simContractDuration
                                     row["isPhoneContractAvailableWOsim"] = isPhoneContractAvailableWOsim
-                                    if row["cat"] == "mobile":
-                                        row["phoneContractSimPackage"] = phoneContractSimPackage
-                                    else:
-                                        row["contractPrice"] = phoneContractSimPackage
+                                    row["phoneContractSimPackage"] = phoneContractSimPackage
                                     row["handsetOnlyContract"] = handsetOnlyContract
                                     row["sim1YearIncrease"] = sim1YearIncrease
                                     row["sim2YearIncrease"] = sim2YearIncrease
@@ -298,7 +295,8 @@ async def fetch_single_product(url: str):
                                         row[f"attributeTitle{attribute_index}"] = title
                                         row[f"attributeValue{attribute_index}"] = description.upper()
                                         attribute_index += 1
-                                    append_to_csv(row, "products.csv")
+                                    if row["cat"] != "broadband":
+                                        append_to_csv(row, "products.csv")
 
                         else:
 
@@ -314,10 +312,8 @@ async def fetch_single_product(url: str):
                             row["simContractname"] = ""
                             row["simContractDuration"] = 0
                             row["isPhoneContractAvailableWOsim"] = "N"
-                            if row["cat"] == "mobile":
-                                row["phoneContractSimPackage"] = phoneContractSimPackage
-                            else:
-                                row["contractPrice"] = phoneContractSimPackage
+                            row["phoneContractSimPackage"] = phoneContractSimPackage
+
                             row["handsetOnlyContract"] = ""
                             row["sim1YearIncrease"] = ""
                             row["sim2YearIncrease"] = ""
@@ -333,9 +329,8 @@ async def fetch_single_product(url: str):
                                 row[f"attributeValue{attribute_index}"] = description.upper()
                                 attribute_index += 1
 
-
-                            append_to_csv(row, "products.csv")
-
+                            if row["cat"] != "broadband":
+                                append_to_csv(row, "products.csv")
 
 
 
