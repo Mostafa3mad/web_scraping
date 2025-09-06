@@ -278,28 +278,25 @@ async def fetch_single_product(url: str):
                     specification_json = json.loads(specification_response)
                     spec_groups = specification_json["specification"]["specificationGroups"]
 
-
                     attribute_index = 1
-                    last_group = None
 
-                    for group in spec_groups:
+                    for group in specification_json.get("specification", {}).get("specificationGroups", []):
+                        if attribute_index > 20:
+                            break
                         group_name = group.get("name", "").strip()
 
-                        if group_name != last_group:
-                            last_group = group_name
-
+                        values = []
                         for attr in group.get("specificationAttributes", []):
-                            title = group_name
-                            description = attr.get("value", "").strip()
+                            val = attr.get("value", "").strip()
+                            if val:
+                                values.append(val.upper())
 
+                        if values:
                             row[f"attributeType{attribute_index}"] = "SPECIFICATION"
-                            row[f"attributeTitle{attribute_index}"] = title
-                            if f"attributeValue{attribute_index}" in row:
-                                row[f"attributeValue{attribute_index}"] += " | " + description.upper()
-                            else:
-                                row[f"attributeValue{attribute_index}"] = description.upper()
+                            row[f"attributeTitle{attribute_index}"] = group_name
+                            row[f"attributeValue{attribute_index}"] = " | ".join(values)
 
-                        attribute_index += 1
+                            attribute_index += 1
                     append_to_csv(row, "products.csv")
 
 
