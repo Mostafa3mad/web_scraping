@@ -149,6 +149,7 @@ async def get_plans(soup):
 async def fetch_single_product(url: str):
     prodact_name = url.split("/")[-1]
     config = DEFAULT_CONFIG.copy()
+    config["use_scrapingbee"] = True
     response = await fetch_url(url, config=config,headers={},content_type="product")
     soup = BeautifulSoup(response, "html.parser")
     product_data = await extract_json_ld(soup)
