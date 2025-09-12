@@ -58,21 +58,25 @@ def append_to_csv(item, filepath):
             writer.writerow(item)
 
 
+def is_available(plan: dict) -> bool:
+    return not plan.get("planIsLegacy", False) and not plan.get("planIsIndirectRetailOnly", False)
+
+
 def format_offer(voucher: Optional[dict]) -> str:
     if not voucher:
         return ""
-    data_amount = voucher.get("applies_to").get("title")
+    data_amount = voucher.get("data_amount")
 
     return data_amount
 def offer_chip_text(voucher: Optional[dict]) -> str:
     if not voucher:
         return ""
-    offer_chip_text = voucher.get("roundel_type")
+    offer_chip_text = voucher.get("plan_card_heading")
 
     return offer_chip_text
 
 def _best_data_gb(plan: dict):
-    return plan.get("dataAllowanceWithPromosGB") if plan.get("dataAllowanceWithPromosGB") is not None else plan.get("dataAllowanceGB")
+    return plan.get("dataAllowanceGB") if plan.get("dataAllowanceGB") is not None else plan.get("dataAllowanceGB")
 
 def _int_if_whole(x):
     if isinstance(x, float) and x.is_integer():
@@ -80,7 +84,6 @@ def _int_if_whole(x):
     return x
 
 async def fetch_single_product(url: str) -> List[Dict[str, Any]]:
-    # 1) اجلب الداتا
     response = await fetch_url(url, content_type="product")
 
     if isinstance(response, (bytes, str)):
@@ -113,41 +116,48 @@ async def fetch_single_product(url: str) -> List[Dict[str, Any]]:
         plan_type = plan.get("categoryType") or ""
         sim_data = _best_data_gb(plan)
         sim_price = (plan.get("finalPrice") or {}).get("value")
-        url_plan = f"https://smarty.co.uk/plans/{plan.get('slug')}" if plan.get("slug") else ""
-        plan_sim: Dict[str, Any] = {
-            "source": "smarty",
-            "date": time.strftime("%Y-%m-%d"),
-            "apiURL": url,
+        url_plan = f"https://smarty.co.uk/plans/{plan.get('slug')}/" if plan.get("slug") else ""
 
-            "url": url_plan,
-            "sku": plan.get("id") or "",
-            "plan_type": plan_type,
-            "sim_data": _int_if_whole(sim_data) if sim_data is not None else sim_data,
-            "sim_price": _int_if_whole(sim_price),
-            "simOfferData": format_offer(plan.get("voucher")),
-            "saleText" : offer_chip_text(plan.get("voucher")),
-            "onSale" : "Y" if offer_chip_text(plan.get("voucher")) else "",
-            "simContractname": plan.get("name") or "",
-            "simContractDuration": 1,
-            "isPhoneContractAvailableWOsim": "N",
-            "phoneContractSimPackage": "",
-            "handsetOnlyContract": "",
-            "sim1YearIncrease": "",
-            "sim2YearIncrease": "",
-            "sim3YearIncrease": "",
-            "simDesc": plan.get("description") or "",
-            "cat" : url_plan.split("/")[3],
-            "subcat1" : url_plan.split("/")[4] if len(url_plan.split("/")) > 4 else "",
-            "subcat2" : url_plan.split("/")[5] if len(url_plan.split("/")) > 5 else "",
-            "subcat3" : url_plan.split("/")[6] if len(url_plan.split("/")) > 6 else "",
-            "subcat4" : url_plan.split("/")[7] if len(url_plan.split("/")) > 7 else "",
-            "subcat5" : url_plan.split("/")[8] if len(url_plan.split("/")) > 8 else "",
-        }
+        if url_plan:
+            try:
+                response = await fetch_url(url_plan, content_type="product")
+                if "refresh" in str(response):
+                    continue
+
+                plan_sim: Dict[str, Any] = {
+                    "source": "smarty",
+                    "date": time.strftime("%Y-%m-%d"),
+                    "apiURL": url,
+
+                    "url": url_plan,
+                    "sku": plan.get("id") or "",
+                    "plan_type": plan_type,
+                    "sim_data": _int_if_whole(sim_data) if sim_data is not None else sim_data,
+                    "sim_price": _int_if_whole(sim_price),
+                    "simOfferData": format_offer(plan.get("voucher")),
+                    "saleText" : offer_chip_text(plan.get("voucher")),
+                    "onSale" : "Y" if offer_chip_text(plan.get("voucher")) else "",
+                    "simContractname": plan.get("name") or "",
+                    "simContractDuration": 1,
+                    "isPhoneContractAvailableWOsim": "N",
+                    "phoneContractSimPackage": "",
+                    "handsetOnlyContract": "",
+                    "sim1YearIncrease": "",
+                    "sim2YearIncrease": "",
+                    "sim3YearIncrease": "",
+                    "simDesc": plan.get("description") or "",
+                    "cat" : url_plan.split("/")[3],
+                    "subcat1" : url_plan.split("/")[4] if len(url_plan.split("/")) > 4 else "",
+                    "subcat2" : url_plan.split("/")[5] if len(url_plan.split("/")) > 5 else "",
+                    "subcat3" : url_plan.split("/")[6] if len(url_plan.split("/")) > 6 else "",
+                    "subcat4" : url_plan.split("/")[7] if len(url_plan.split("/")) > 7 else "",
+                    "subcat5" : url_plan.split("/")[8] if len(url_plan.split("/")) > 8 else "",
+                }
 
 
-        # print(plan_sim)
-        append_to_csv(plan_sim, "products.csv")
-
+                append_to_csv(plan_sim, "products.csv")
+            except:
+                pass
 
     return plan_sims
 
