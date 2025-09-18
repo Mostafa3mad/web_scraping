@@ -68,7 +68,6 @@ This scraper is engineered to **reliably fetch data while handling Cloudflare ch
    ```bash
    git clone https://github.com/Mostafa3mad/web_scraping.git
    cd web_scraping/DG_scripts/DG_market/DG_ao_com
-````
 
 2. Install dependencies:
 
@@ -113,3 +112,4 @@ Developed by **Mostafa EMAD**
 
 ## 📜 License
 This project is licensed under the [MIT License](./LICENSE).
+````
