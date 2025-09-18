@@ -112,4 +112,3 @@ Developed by **Mostafa EMAD**
 
 ## 📜 License
 This project is licensed under the [MIT License](./LICENSE).
-````
