@@ -1,32 +1,53 @@
 # 🍻 Wetherspoon Android API Scraper
 
-This project contains a collection of Python scripts to interact with the **Wetherspoon Android API**.  
-It demonstrates how to extract **Venues, Sales Areas, Menus, and Products** programmatically.
+This project is a **showcase of my advanced scraping and reverse engineering skills**.  
+It demonstrates how I analyzed and reversed the **Wetherspoon Android API**, bypassed SSL protections, and built Python scripts to programmatically extract structured data including **Venues, Sales Areas, Menus, and Products**.
 
 ---
 
-## 📂 Project Structure
+## 👨‍💻 About Me
+
+I am a **Scraper & Automation Specialist** with strong experience in both **Web** and **Android** environments:
+
+- 📱 **Android API Scraping** – Reverse-engineering mobile apps to extract hidden/private APIs.  
+- 🔓 **Bypassing Protections** – SSL pinning bypass, certificate verification, and app-layer security.  
+- 🌍 **Web Scraping** – Static & dynamic websites (JavaScript-heavy) with **Requests, Selenium, Playwright**.  
+- ⚡ **Automation & Bots** – Automating repetitive tasks with clean and reusable scripts.  
+- 📊 **Data Extraction & Export** – Delivering structured data (JSON, CSV, Excel, or databases).  
+
+---
+
+## 📂 Project Overview
+
+This repo contains 4 Python scripts, each representing a step in the scraping pipeline:
 
 - **`1get_all_venus.py`** – Fetches all available venues using the `/venues` endpoint.  
 - **`2data_of_venue_to_get_sales_area.py`** – Retrieves details of a specific venue (`venue_id`) and extracts its `salesArea_id`.  
 - **`3all_mens_from_venue.py`** – Fetches all available menus for a given `venue_id` and `salesArea_id`.  
-- **`4all_product_in_menu_categorie.py`** – Fetches all products inside a given menu, organized by categories and item groups.  
+- **`4all_product_in_menu_categorie.py`** – Scrapes all products inside a given menu, organized by categories and item groups.  
+
+Each script is modular, so you can run them independently or chain them together for a full scraping workflow.
 
 ---
 
-## ⚙️ Requirements
+## ⚙️ Tech Stack
 
-- Python 3.8+
-- Install dependencies:
-  ```bash
-  pip install requests
+- **Python 3.8+**  
+- **Requests** (HTTP client)  
+- Reverse-engineered API endpoints from Android app traffic  
+- Custom JSON parsing & structured data export  
+
+Install dependencies:
+
+```bash
+pip install requests
 ````
 
 ---
 
 ## 🔑 Authentication
 
-All requests require specific headers for authentication:
+All API calls use headers for authentication:
 
 ```http
 Authorization: Bearer <YOUR_TOKEN>
@@ -37,7 +58,7 @@ Replace `<YOUR_TOKEN>` with a valid API token.
 
 ---
 
-## 📌 Endpoints & Scripts
+## 📌 Endpoints & Functionality
 
 ### 1️⃣ Get All Venues
 
@@ -48,11 +69,7 @@ Replace `<YOUR_TOKEN>` with a valid API token.
 GET https://ca.jdw-apps.net/api/v0.1/venues
 ```
 
-**Description:**
-Fetches all venues. Extracts:
-
-* `venueName`
-* `venueRef` (used as `venue_id` in later requests)
+➡️ Extracts: `venueName`, `venueRef`
 
 ---
 
@@ -65,10 +82,7 @@ Fetches all venues. Extracts:
 GET https://ca.jdw-apps.net/api/v0.1/venues/{venue_id}
 ```
 
-**Description:**
-Fetches details of a specific venue and extracts:
-
-* `salesArea_id`
+➡️ Extracts: `salesArea_id`
 
 ---
 
@@ -81,11 +95,7 @@ Fetches details of a specific venue and extracts:
 GET https://ca.jdw-apps.net/api/v0.1/jdw/venues/{venue_id}/sales-areas/{salesArea_id}/menus?type=available
 ```
 
-**Description:**
-Fetches all available menus for the given venue and sales area. Extracts:
-
-* `menuName`
-* `menu_id`
+➡️ Extracts: `menuName`, `menu_id`
 
 ---
 
@@ -98,8 +108,7 @@ Fetches all available menus for the given venue and sales area. Extracts:
 GET https://ca.jdw-apps.net/api/v0.1/jdw/venues/{venue_id}/sales-areas/{salesArea_id}/menus/{menu_id}
 ```
 
-**Description:**
-Fetches all products under the specified menu. Extracts:
+➡️ Extracts:
 
 * `categoryName`
 * `itemGroup_name`
@@ -124,7 +133,7 @@ Product ID:  10000141585
 
 ## 🚀 Usage
 
-Run each script individually:
+Run scripts individually:
 
 ```bash
 python 1get_all_venus.py
@@ -133,11 +142,38 @@ python 3all_mens_from_venue.py
 python 4all_product_in_menu_categorie.py
 ```
 
+Or chain them together to scrape the full dataset: **Venues → Sales Areas → Menus → Products**.
+
 ---
 
-## ⚠️ Notes
+## ⚡ Why Work With Me?
 
-* You must replace `venue_id`, `salesArea_id`, and `menu_id` manually inside the scripts or automate chaining between them.
-* This project is for **educational purposes only**.
+✅ Reverse-engineering Android apps
+✅ Bypassing SSL pinning & protection layers
+✅ Extracting hidden/private APIs
+✅ Web scraping (static + dynamic)
+✅ Automation bots & data pipelines
+✅ Clean, maintainable Python code
 
+---
 
+## 🌟 Portfolio Use Cases
+
+I have worked on scraping and automation projects in multiple industries:
+
+* 🛒 **E-commerce** – Product catalogs, prices, reviews.
+* ✈️ **Travel** – Flight data, hotel availability, booking APIs.
+* 🎮 **Entertainment** – Game/app APIs, leaderboards, hidden endpoints.
+* 📊 **Business Intelligence** – Market research, competitor monitoring.
+* 🍔 **Food & Delivery Apps** – Menus, pricing, and product catalogs.
+
+---
+
+## 🤝 Hire Me
+
+Looking for someone who can **scrape Android APIs, bypass SSL protections, or extract data from complex websites**?
+I’ll deliver **secure, reliable, and production-ready scraping solutions**.
+
+📬 [👉 View my Upwork Profile](https://www.upwork.com/freelancers/~0179f2b4933834b31f)
+
+Let’s work together and turn your data challenges into clean, structured solutions 🚀
