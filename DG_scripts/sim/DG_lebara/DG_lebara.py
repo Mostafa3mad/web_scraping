@@ -41,7 +41,7 @@ def create_csv_file(filepath):
     if DEFAULT_CONFIG["save_local"]:
 
         headers = get_standard_csv_headers()
-        with open(OUTPUTS_DIR/filepath, mode="w", newline='', encoding='utf-8') as f:
+        with open(OUTPUTS_DIR/filepath, mode="w", newline='', encoding='utf-8-sig') as f:
             writer = csv.DictWriter(f, fieldnames=headers)
             writer.writeheader()
 
@@ -50,7 +50,7 @@ def append_to_csv(item, filepath):
     if DEFAULT_CONFIG["save_local"]:
 
         headers = get_standard_csv_headers()
-        with open(OUTPUTS_DIR/filepath, mode="a", newline='', encoding='utf-8') as f:
+        with open(OUTPUTS_DIR/filepath, mode="a", newline='', encoding='utf-8-sig') as f:
             writer = csv.DictWriter(f, fieldnames=headers)
             writer.writerow(item)
 
@@ -138,6 +138,7 @@ def extract_specs(raw_data, max_attributes=20):
 async def fetch_single_product(url: str):
     confing = DEFAULT_CONFIG.copy()
     confing["use_scrapingbee"] = False
+    url = f"{url}?simfree=1"
     response = await fetch_url(url, content_type="product", headers={},config=confing)
 
     soup = BeautifulSoup(response, "html.parser")
@@ -151,6 +152,7 @@ async def fetch_single_product(url: str):
         if "'ecommerce'" in block or '"ecommerce"' in block:
             fixed = block.replace("'", '"')
             data_product = json.loads(fixed)
+
             if data_product :
                 row = {}
                 row["source"] = "lebara"
@@ -245,7 +247,7 @@ async def fetch_single_product(url: str):
                     row[f"attributeType{idx}"] = spec["attributeType"]
                     row[f"attributeTitle{idx}"] = spec["attributeTitle"]
                     row[f"attributeValue{idx}"] = spec["attributeValue"]
-
+                print(row)
                 append_to_csv(row, "products.csv")
 
 
@@ -348,9 +350,42 @@ def get_product_links(urls):
             slug = parts[-1].lower()
 
             if not any(bad in slug for bad in bad_keywords):
-                product_links.append(url+"?simfree=1")
+                product_links.append(url)
 
     return list(set(product_links))
+
+
+async def extract_links(url):
+    config = DEFAULT_CONFIG.copy()
+    """
+    Fetch and parse a sitemap XML file.
+    """
+    logger.info(f"Fetching sitemap from {url}")
+    try:
+        xml_text = await fetch_url(url, content_type="sitemap", config=config,headers={})
+
+        # Parse XML
+        root = ET.fromstring(xml_text)
+
+        # Extract URLs from sitemap
+        urls = []
+        # Define namespace if present in the XML
+        ns = {'sm': 'http://www.sitemaps.org/schemas/sitemap/0.9'}
+
+        # Try with namespace first
+        loc_elements = root.findall('.//sm:loc', ns)
+        if not loc_elements:
+            # Try without namespace
+            loc_elements = root.findall('.//loc')
+
+        for loc in loc_elements:
+            urls.append(loc.text)
+
+
+        return urls
+    except Exception as e:
+        logger.error(f"Failed to fetch sitemap {url}: {repr(e)}")
+        return []
 
 
 
@@ -363,7 +398,7 @@ async def main():
 
 
     url = "https://phones.lebara.co.uk/sitemap.xml"
-    site_maps = await fetch_sitemap(url)
+    site_maps = await extract_links(url)
     products = get_product_links(site_maps)
     data = await extact_data_from_product_url(products)
 
