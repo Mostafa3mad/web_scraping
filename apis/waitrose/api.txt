@@ -1,0 +1,55 @@
+headers = {
+    'User-Agent': 'MobileApp/3.3.0.12910.12910 (Google; sdk_gphone64_x86_64; Android 14)',
+    'Authorization': 'Bearer unauthenticated',
+}
+
+__________________________________________________________________________________
+1 step
+# master categories
+GET https://www.waitrose.com/api/taxonomy-entity-prod/v1/taxonomy/waitrose-ecomm-groceries
+
+fetch all categories
+ three level only becouse this have all product inside
+
+__________________________________________________________________________________
+
+2 step
+# get all products in category
+
+POST https://www.waitrose.com/api/content-prod/v2/cms/publish/productcontent/browse/-1?clientType=WEB_APP
+
+payload = {
+    'customerSearchRequest': {
+        'queryParams': {
+            'category': '335082',
+            'filterTags': [],
+            'orderId': -1,
+            'sortBy': 'MOST_POPULAR',
+            'start': 0,
+        },
+    },
+}
+
+
+fetch all id products in category
+
+data = response.json()
+componentsAndProducts = data.get('componentsAndProducts', [])
+
+
+id_products = []
+for componentsAndProduct in componentsAndProducts:
+
+    componentsAndProductId = componentsAndProduct.get('searchProduct', {}).get('lineNumber', [])
+    if componentsAndProductId:
+        id_products.append(componentsAndProductId)
+
+
+__________________________________________________________________________________
+
+step 3
+fetch datail product
+GET https://www.waitrose.com/api/products-prod/v1/products/947413?view=EXTENDED&filterByCustomerSlot=false&trolleyId=-1
+
+
+
