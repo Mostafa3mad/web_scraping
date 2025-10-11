@@ -54,6 +54,5 @@ headers["X-Csrf-Token"] = _csrf_header
 api_clint = "https://www.waitrose.com/api/token-client-prod/v1/token"
 response = session.post(api_clint, headers=headers)
 
-print(response.json())
 Authorization = f"Authorization : Bearer {response.json().get('accessToken')}"
 print(Authorization)
