@@ -147,27 +147,325 @@ async def get_platform_session_id(session):
         platform_session_id = data.get("platformSessionId")
         return platform_session_id
 
+async def get_specification(session,api_specification,row):
+    specification_response = await fetch_url(api_specification, content_type="", client=session,headers={},config={})
+    specification_json = json.loads(specification_response)
+    spec_groups = specification_json["specification"]["specificationGroups"]
+
+    attribute_index = 1
+
+    for group in specification_json.get("specification", {}).get("specificationGroups", []):
+        if attribute_index > 20:
+            break
+        group_name = group.get("name", "").strip()
+
+        values = []
+        for attr in group.get("specificationAttributes", []):
+            val = attr.get("value", "").strip()
+            if val:
+                values.append(val.upper())
+
+        if values:
+            row[f"attributeType{attribute_index}"] = "SPECIFICATION"
+            row[f"attributeTitle{attribute_index}"] = group_name
+            row[f"attributeValue{attribute_index}"] = " | ".join(values)
+
+            attribute_index += 1
+
+
+async def fetch_plan(url, pay_method, platform_session_id, brand, model, journey_id, sku,session,size_variant):
+    all_plans = []
+    data_row_plan = {}
+
+    if pay_method == "pay-monthly-contracts":
+        max_upfront = float(size_variant.get("upfrontPriceConfigurator", {}).get("maximumUpfrontPrice", {}).get("gross").get("value"))
+        min_upfront = float(size_variant.get("upfrontPriceConfigurator", {}).get("minimumUpfrontPrice", {}).get("gross").get("value"))
+        max_month = float(size_variant.get("tenureConfigurator", {}).get("maximumTenure", {}).get("value")) or 0
+        min_month = float(size_variant.get("tenureConfigurator", {}).get("minimumTenure", {}).get("value")) or 0
+        list_upfront = list(range(int(min_upfront), int(max_upfront)+1,100))
+        if list_upfront[-1] != int(max_upfront):
+            list_upfront.append(int(max_upfront))
+        for month in [int(max_month), int(min_month)]:
+
+            for upfront in list_upfront:
+                # print("-------------------")
+                # print(month)
+                # print(upfront)
+
+                # print("max_month",max_month)
+                # print("min_month",min_month)
+                # print("max_upfront",max_upfront)
+                # print("min_upfront",min_upfront)
+
+                total_device = float(size_variant.get("upfrontPriceConfigurator", {}).get("totalHandsetPrice", {}).get("gross", {}).get("value"))
+                # print("total_device",total_device)
+                deviceMonthlyPrice = float(round((total_device - upfront) / month, 2))
+                # print("deviceMonthlyPrice",deviceMonthlyPrice)
+                api_package_contract = f"https://www.vodafone.co.uk/mobile/pay-monthly-contracts/api/digital/v2/device-purchase/paym/v3/{platform_session_id}/{brand}/{model}/device-group-journeys/{journey_id}/package?{sku}"
+
+                json_data_contract = {
+                    'tenure': month,
+                    'upfrontPrice': upfront,
+                    'deviceMonthlyPrice': deviceMonthlyPrice,
+                    'confirmConfigurator': True,
+                }
+                headers = {
+                    'X-HTTP-Method-Override': 'PATCH',
+                }
+
+                package_response = await fetch_url(api_package_contract, content_type="", client=session, method="POST",
+                                                   json_data=json_data_contract, headers=headers, config={})
+                package_response_json = json.loads(package_response)
+                # print(package_response_json)
+                plan_api = f"https://www.vodafone.co.uk/mobile/pay-monthly-contracts/api/digital/v2/device-purchase/paym/v3/{platform_session_id}/{brand}/{model}/device-group-journeys/{journey_id}/device-variants/{sku}/plans"
+                plan_response = await fetch_url(plan_api, content_type="", client=session, headers={}, config={})
+                plans_response = json.loads(plan_response)
+                # print(plans_response)
+                Upfront = plans_response.get("packageBuildSummary").get("deviceUpfrontCost").get("gross").get("value")
+                device_monthly = plans_response.get("_links").get("select-device-variant-tenure").get("parameters").get(
+                    "deviceMonthlyPrice")
+                handsetOnlyCostCash = plans_response.get("packageBuildSummary").get("deviceTotalCost").get("gross").get("value")
+                Duration_contract_device = plans_response.get("_links", {}).get("select-device-variant-tenure", {}).get(
+                    "parameters", {}).get("tenure") or 0
+                Duration_contract_data_plan = plans_response.get("filters").get("duration")[0].get("value")
+
+                if Duration_contract_device:
+                    Duration_contract_data_plan = float(Duration_contract_data_plan.split(" ")[0])
+                    # print(Duration_contract_data_plan)
+                    phoneContractPrice = float(device_monthly) * float(Duration_contract_device) + float(Upfront)
+
+                for plan in plans_response.get("plans", []):
+                    simDesc_list = []
+                    name = plan.get("name")
+                    plan_monthly = plan.get("planPrices", {}).get("monthlyPrices", {}).get("currentPrice", {}).get("gross")
+                    total_monthly = plan.get("prices", {}).get("monthlyPrices", {}).get("currentPrice", {}).get("gross")
+                    data_row_plan["phoneContractDuration"] = Duration_contract_device
+                    data_row_plan["handsetOnlyCostCash"] = handsetOnlyCostCash
+                    data_row_plan["advance"] = Upfront
+                    data_row_plan["phoneContractPrice"] = phoneContractPrice
+                    data_row_plan["paymentAmount"] = device_monthly
+                    data_row_plan["plan_type"] = "contract"
+                    data_row_plan["sim_data"] = name.split(" ")[0]
+                    data_row_plan["sim_price"] = plan_monthly
+                    data_row_plan["simOfferData"] = ""
+                    data_row_plan["simContractname"] = name
+                    data_row_plan["simContractDuration"] = Duration_contract_data_plan
+                    data_row_plan["isPhoneContractAvailableWOsim"] = "N"
+                    data_row_plan["phoneContractSimPackage"] = total_monthly
+                    inclusiveProducts = plan.get("inclusiveProducts", [])
+                    for inclusiveProduct in inclusiveProducts:
+
+                        simDesc_list.append(inclusiveProduct.get("name", ""))
+
+                    data_row_plan["simDesc"] = " | ".join(simDesc_list)
+                    data_row_plan["handsetOnlyContract"] = ""
+                    index = 1
+                    for rise in plan.get("bundlePriceRise", []):
+                        price = rise.get("monthlyPrice", {}).get("gross")
+                        text = rise.get("text", "")
+                        if price and text != "":
+                            # print(f"increase in {index} year £{price} {text}")
+                            data_row_plan[f"sim{index}YearIncrease"] = price
+                            index += 1
+                    all_plans.append(data_row_plan)
+                    # print(data_row_plan["simDesc"])
+                    data_row_plan={}
+
+
+        return all_plans
+
+    if pay_method == "smart-watches-and-wearables":
+        max_upfront = float(size_variant.get("upfrontPriceConfigurator", {}).get("maximumUpfrontPrice", {}).get("gross").get("value"))
+        min_upfront = float(size_variant.get("upfrontPriceConfigurator", {}).get("minimumUpfrontPrice", {}).get("gross").get("value"))
+        max_month = float(size_variant.get("tenureConfigurator", {}).get("maximumTenure", {}).get("value")) or 0
+        min_month = float(size_variant.get("tenureConfigurator", {}).get("minimumTenure", {}).get("value")) or 0
+        list_upfront = list(range(int(min_upfront), int(max_upfront)+1,100))
+        if list_upfront[-1] != int(max_upfront):
+            list_upfront.append(int(max_upfront))
+        for month in [int(max_month), int(min_month)]:
+
+            for upfront in list_upfront:
+                # print("-------------------")
+                # print(month)
+                # print(upfront)
+
+                # print("max_month",max_month)
+                # print("min_month",min_month)
+                # print("max_upfront",max_upfront)
+                # print("min_upfront",min_upfront)
+
+                total_device = float(size_variant.get("upfrontPriceConfigurator", {}).get("totalHandsetPrice", {}).get("gross", {}).get("value"))
+                # print("total_device",total_device)
+                deviceMonthlyPrice = float(round((total_device - upfront) / month, 2))
+                # print("deviceMonthlyPrice",deviceMonthlyPrice)
+                api_package_contract = f"https://www.vodafone.co.uk/smart-watches-and-wearables/api/smart-device-purchase/v3/{platform_session_id}/consumer/watch/paym/{brand}/{model}/smart-device-groups-journey/{journey_id}/package?{sku}"
+
+                json_data_contract = {
+                    'tenure': month,
+                    'upfrontPrice': upfront,
+                    'deviceMonthlyPrice': deviceMonthlyPrice,
+                    'confirmConfigurator': True,
+                }
+                headers = {
+                    'X-HTTP-Method-Override': 'PATCH',
+                }
+
+                package_response = await fetch_url(api_package_contract, content_type="", client=session, method="POST",
+                                                   json_data=json_data_contract, headers=headers, config={})
+                package_response_json = json.loads(package_response)
+                # print(package_response_json)
+                plan_href  = package_response_json["_links"]["get-plans"]["href"]
+
+                plan_api = f"https://www.vodafone.co.uk/smart-watches-and-wearables/api"+plan_href
+                plan_response = await fetch_url(plan_api, content_type="", client=session, headers={}, config={})
+                plans_response = json.loads(plan_response)
+                # print(plans_response)
+                Upfront = plans_response.get("packageBuildSummary").get("deviceUpfrontCost").get("gross").get("value")
+                device_monthly = plans_response.get("packageBuildSummary").get("deviceMonthlyCost").get("gross").get("value")
+                handsetOnlyCostCash = float(deviceMonthlyPrice)
+                Duration_contract_device = plans_response.get("packageBuildSummary", {}).get("deviceTenure", {}).get("value") or 0
+
+
+
+                for plan in plans_response.get("plans", []):
+                    if Duration_contract_device:
+                        Duration_contract_data_plan = float(plan.get("commitmentPeriod").split(" ")[0])
+                        # print(Duration_contract_data_plan)
+                        phoneContractPrice = float(device_monthly) * float(Duration_contract_device) + float(Upfront)
+
+                    name = plan.get("name")
+                    plan_monthly = plan.get("monthlyPrice", {}).get("gross", {}).get("value", 0)
+                    # total_monthly = plan.get("prices", {}).get("monthlyPrices", {}).get("currentPrice", {}).get("gross")
+                    data_row_plan["phoneContractDuration"] = Duration_contract_device
+                    data_row_plan["handsetOnlyCostCash"] = handsetOnlyCostCash
+                    data_row_plan["advance"] = Upfront
+                    data_row_plan["phoneContractPrice"] = round(phoneContractPrice, 2)
+                    data_row_plan["paymentAmount"] = device_monthly
+                    data_row_plan["plan_type"] = "contract"
+                    data_row_plan["sim_data"] = ""
+                    data_row_plan["sim_price"] = plan_monthly
+                    data_row_plan["simOfferData"] = ""
+                    data_row_plan["simContractname"] = name
+                    data_row_plan["simContractDuration"] = Duration_contract_data_plan
+                    data_row_plan["isPhoneContractAvailableWOsim"] = "N"
+                    data_row_plan["phoneContractSimPackage"] = round(float(device_monthly) + float(plan_monthly),2)
+                    data_row_plan["handsetOnlyContract"] = ""
+                    index = 1
+                    for rise in plan.get("bundlePriceRise", []):
+                        price = rise.get("monthlyPrice", {}).get("gross")
+                        text = rise.get("text", "")
+                        if price and text != "":
+                            # print(f"increase in {index} year £{price} {text}")
+                            data_row_plan[f"sim{index}YearIncrease"] = price
+                            index += 1
+                    all_plans.append(data_row_plan)
+                    data_row_plan={}
+
+
+        return all_plans
+
+    elif "pay-as-you-go" in str(url):
+        plan_device_api = f"https://www.vodafone.co.uk/mobile/pay-as-you-go/api/payg-device-purchase/{platform_session_id}/consumer/voice/{brand}/{model}/journeys/{journey_id}/device-variants/{sku}/plans"
+        plan_response = await fetch_url(plan_device_api, content_type="", client=session, headers={},
+                                        config={})
+        plan_json = json.loads(plan_response)
+        # print(plan_json)
+        plans = plan_json.get("bundles", [])
+
+        for plan in plans:
+            name = plan.get("name")
+            Duration_contract_data_plan = 1
+            plan_monthly = float(plan.get("price", {}).get("gross", {}).get("value", ""))
+            plan_id = plan.get("id", "")
+            price_phone = float(size_variant.get("originalOneOffPrice", {}).get("gross", "").get("value", ""))
+            total_monthly = price_phone + plan_monthly
+            data_bundels = plan.get("allowances", [])
+
+            # print(plan_id)
+            ORIGDATA = ""
+            DATA = ""
+            simOfferData = ""
+            # print(data_bundels)
+            for data_bundel in data_bundels:
+                if data_bundel.get("type") == "ORIGDATA":
+                    ORIGDATA = data_bundel.get("value", "")
+                elif data_bundel.get("type") == "DATA":
+                    DATA = data_bundel.get("value", "")
+
+            if ORIGDATA == DATA:
+                DATA = ""
+
+            data_row_plan["phoneContractDuration"] = 0
+            data_row_plan["handsetOnlyCostCash"] = price_phone
+            data_row_plan["advance"] = 0
+            data_row_plan["phoneContractPrice"] = 0
+            data_row_plan["paymentAmount"] = 0
+            data_row_plan["plan_type"] = "pay_as_yo_go"
+            data_row_plan["sim_data"] = ORIGDATA
+            data_row_plan["sim_price"] = plan_monthly
+            data_row_plan["simOfferData"] = DATA
+            data_row_plan["simContractname"] = name
+            data_row_plan["simContractDuration"] = 1
+            data_row_plan["isPhoneContractAvailableWOsim"] = "N"
+            data_row_plan["phoneContractSimPackage"] = total_monthly
+            data_row_plan["handsetOnlyContract"] = ""
+
+
+            all_plans.append(data_row_plan)
+            data_row_plan={}
+        return all_plans
+
+
 
 async def fetch_single_product(url: str):
+    pay_method = ""
+    if "pay-monthly-contracts" in str(url):
+        pay_method = "pay-monthly-contracts"
+    elif "pay-as-you-go" in str(url):
+        pay_method = "pay-as-you-go"
+    elif "smart-watches-and-wearables" in str(url):
+        pay_method = "smart-watches-and-wearables"
 
     async with httpx.AsyncClient(timeout=30.0) as session:
-        auth_html = await fetch_url("https://www.vodafone.co.uk/web-shop/login/auth/session", client=session)
+        auth_html = await fetch_url("https://www.vodafone.co.uk/web-shop/login/auth/session", client=session,headers={},config={})
         platform_session_id = await get_platform_session_id(session)
+        # print(platform_session_id)
         slogn_url = url.strip("/").split("/")[-2:]
         brand, model = slogn_url
-        api_url = f"https://www.vodafone.co.uk/mobile/pay-monthly-contracts/api/digital/v2/device-purchase/paym/v3/{platform_session_id}/{brand}/{model}/device-group-journeys/latest?segment=Consumer"
+        if pay_method == "pay-monthly-contracts":
+            api_url = f"https://www.vodafone.co.uk/mobile/pay-monthly-contracts/api/digital/v2/device-purchase/paym/v3/{platform_session_id}/{brand}/{model}/device-group-journeys/latest?segment=Consumer"
+        elif pay_method == "pay-as-you-go":
+            api_url = f"https://www.vodafone.co.uk/mobile/pay-as-you-go/api/payg-device-purchase/{platform_session_id}/consumer/voice/{brand}/{model}/journeys/latest"
 
-        response_Consumer = await fetch_url(api_url, content_type="", client=session)
+        elif pay_method == "smart-watches-and-wearables":
+            api_url = f"https://www.vodafone.co.uk/smart-watches-and-wearables/api/smart-device-purchase/v3/{platform_session_id}/consumer/watch/paym/{brand}/{model}/smart-device-groups-journey/latest"
+
+
+        response_Consumer = await fetch_url(api_url, content_type="", client=session,headers={},config={})
+        # print(response_Consumer)
         payload = json.loads(response_Consumer)
-        variants_href = payload["_links"]["get-device-variants"]["href"]
-        variants_href = "https://www.vodafone.co.uk/mobile/pay-monthly-contracts/api/digital/v2" + variants_href
-        vatites_response = await fetch_url(variants_href, content_type="", client=session)
+
+        if pay_method == "pay-monthly-contracts":
+            variants_href = payload["_links"]["get-device-variants"]["href"]
+
+            variants_href = f"https://www.vodafone.co.uk/mobile/pay-monthly-contracts/api/digital/v2" + variants_href
+        elif pay_method == "pay-as-you-go":
+            variants_href = payload["_links"]["get-device-variants"]["href"]
+
+            variants_href = f"https://www.vodafone.co.uk/mobile/pay-as-you-go/api" + variants_href
+        elif pay_method == "smart-watches-and-wearables":
+            variants_href = payload["_links"]["get-smart-device-variants"]["href"]
+            variants_href = f"https://www.vodafone.co.uk/smart-watches-and-wearables/api/"+ variants_href
+
+        vatites_response = await fetch_url(variants_href, content_type="", client=session,headers={},config={})
         data = json.loads(vatites_response)
+        # print(data)
         for variant in data.get("variants", []):
             row = {}
             colour = variant.get("colourName")
 
             for size_variant in variant.get("sizeVariants", []):
+                # print(size_variant)
                 availability = size_variant.get("availability", "Unknown")
                 if availability.lower() != "in stock":
                     continue
@@ -178,7 +476,7 @@ async def fetch_single_product(url: str):
                 size = f"{size_variant.get('size', {}).get('value')} {size_variant.get('size', {}).get('uom')}"
                 row["source"] = "Vodafone"
                 row["date"] = datetime.now().strftime("%Y-%m-%d")
-                row["apiURL"] = "api_url_varites"
+                row["apiURL"] = ""
                 row["url"] = url
                 row["sku"] = sku
                 row["name"] = Name
@@ -214,8 +512,18 @@ async def fetch_single_product(url: str):
                         row[f"image{i}"] = f"http:{src}" if src else ""
                 row["saleText"] = ""
                 row["previousPrice"] = ""
-                package_href = size_variant.get("_links").get("select-device-variant").get("href")
-                package_api = f"https://www.vodafone.co.uk/mobile/pay-monthly-contracts/api/digital/v2/{package_href}?{sku}"
+                try:
+                    package_href = size_variant.get("_links").get("select-device-variant-tenure").get("href")
+                except:
+                    package_href = size_variant.get("_links").get("select-device-variant").get("href")
+                if pay_method == "pay-monthly-contracts":
+                    package_api = f"https://www.vodafone.co.uk/mobile/{pay_method}/api/digital/v2/{package_href}?{sku}"
+                elif pay_method == "pay-as-you-go":
+                    package_api = f"https://www.vodafone.co.uk/mobile/pay-as-you-go/api{package_href}?{sku}"
+
+                elif pay_method == "smart-watches-and-wearables":
+                    package_api = f"https://www.vodafone.co.uk/smart-watches-and-wearables/api{package_href}?{sku}"
+
                 json_data = {
                     'deviceId': sku,
                 }
@@ -223,80 +531,60 @@ async def fetch_single_product(url: str):
                     'X-HTTP-Method-Override': 'PATCH',
                 }
 
-                package_response = await fetch_url(package_api, content_type="", client=session, method="POST", json_data=json_data, headers=headers)
+                package_response = await fetch_url(package_api, content_type="", client=session, method="POST", json_data=json_data, headers=headers,config={})
                 package_response_json = json.loads(package_response)
-                api_url = f"https://www.vodafone.co.uk/mobile/pay-monthly-contracts/api/digital/v2/device-purchase/paym/v3/{platform_session_id}/{brand}/{model}/device-group-journeys/latest?segment=Consumer"
-                response_to_get_response = await fetch_url(api_url, content_type="", client=session)
+                if pay_method == "pay-monthly-contracts":
+                    api_url = f"https://www.vodafone.co.uk/mobile/{pay_method}/api/digital/v2/device-purchase/paym/v3/{platform_session_id}/{brand}/{model}/device-group-journeys/latest?segment=Consumer"
+                    response_to_get_response = await fetch_url(api_url, content_type="", client=session,headers={},config={})
 
-                payload = json.loads(response_to_get_response)
-                variants_href = payload["_links"]["get-device-variants"]["href"]
-                variants_href = "https://www.vodafone.co.uk/mobile/pay-monthly-contracts/api/digital/v2" + variants_href
-                parts = variants_href.split("/")
-                journey_id = parts[parts.index("device-group-journeys") + 1]
-                vatites_response = await fetch_url(variants_href, content_type="", client=session)
-                vatites_response_json = json.loads(vatites_response)
+                    payload = json.loads(response_to_get_response)
+                    # print(payload)
+                    variants_href = payload["_links"]["get-device-variants"]["href"]
 
-                plan_api = f"https://www.vodafone.co.uk/mobile/pay-monthly-contracts/api/digital/v2/device-purchase/paym/v3/{platform_session_id}/{brand}/{model}/device-group-journeys/{journey_id}/device-variants/{sku}/plans?preBuilt=true"
-                plan_response = await fetch_url(plan_api, content_type="", client=session)
-                plan_json = json.loads(plan_response)
-                plans = plan_json.get("plans", [])
+                #####################################################variants_href###########################################################
+                # print(variants_href)
+                if pay_method == "pay-monthly-contracts":
+                    variants_href = f"https://www.vodafone.co.uk/mobile/pay-monthly-contracts/api/digital/v2" + variants_href
 
-                for plan in plans:
-                    handsetOnlyCostCash = plan_json.get("packageBuildSummary").get("deviceTotalCost").get("gross").get("value")
-                    name = plan.get("name")
-                    Duration_contract_data_plan = plan.get("commitmentPeriod")
-                    device_monthly = plan.get("deviceMonthlyPrice", {}).get("gross", {}).get("value")
-                    upfront = plan.get("oneOffPrice", {}).get("gross", {}).get("value")
-                    plan_monthly = plan.get("planPrices", {}).get("monthlyPrices", {}).get("currentPrice", {}).get("gross")
-                    total_monthly = plan.get("prices", {}).get("monthlyPrices", {}).get("currentPrice", {}).get("gross")
-                    plan_id = plan.get("_links", {}).get("select-plan", {}).get("parameters", {}).get("planId")
-                    Duration_contract_device = plan.get("_links", {}).get("select-plan", {}).get("parameters", {}).get("tenure")
-                    row["phoneContractDuration"] = Duration_contract_device
-                    row["handsetOnlyCostCash"] = handsetOnlyCostCash
-                    row["advance"] = upfront
-                    row["phoneContractPrice"] = float(device_monthly) * float(Duration_contract_device) + float(upfront)
-                    row["paymentAmount"] = device_monthly
-                    row["plan_type"] = "contract"
-                    row["sim_data"] = name.split(" ")[0]
-                    row["sim_price"] = plan_monthly
-                    row["simOfferData"] = ""
-                    row["simContractname"] = name
-                    row["simContractDuration"] = Duration_contract_data_plan
-                    row["isPhoneContractAvailableWOsim"] = "N"
-                    row["phoneContractSimPackage"] = total_monthly
-                    row["handsetOnlyContract"] = ""
+                    parts = variants_href.split("/")
+                    journey_id = parts[parts.index("device-group-journeys") + 1]
+                    # print(journey_id)
+                    vatites_response = await fetch_url(variants_href, content_type="", client=session, headers={},config={})
+                    vatites_response_json = json.loads(vatites_response)
 
-                    index = 1
-                    for rise in plan.get("bundlePriceRise", []):
-                        price = rise.get("monthlyPrice", {}).get("gross")
-                        text = rise.get("text", "")
-                        if price and text != "":
-                            row[f"sim{index}YearIncrease"] = price
-                            index += 1
+
+                if pay_method == "pay-as-you-go":
+                    variants_href = f"https://www.vodafone.co.uk/mobile/pay-as-you-go/api" + variants_href
+                    parts = variants_href.split("/")
+                    journey_id = parts[parts.index("journeys") + 1]
+                    # print(journey_id)
+                if pay_method == "smart-watches-and-wearables":
+                    variants_href = f"https://www.vodafone.co.uk/smart-watches-and-wearables/api/" + variants_href
+                    parts = variants_href.split("/")
+                    journey_id = parts[parts.index("smart-device-groups-journey") + 1]
+                    # print(journey_id)
+
+
+                #####################################################################api_specification#####################################################################
+                if pay_method == "pay-monthly-contracts":
                     api_specification = f"https://www.vodafone.co.uk/mobile/pay-monthly-contracts/api/digital/v2/device-purchase/paym/v3/{platform_session_id}/{brand}/{model}/device-group-journeys/{journey_id}/device-variants/{sku}/specification"
-                    specification_response = await fetch_url(api_specification, content_type="", client=session)
-                    specification_json = json.loads(specification_response)
-                    spec_groups = specification_json["specification"]["specificationGroups"]
+                    await get_specification(session,api_specification,row)
 
-                    attribute_index = 1
+                elif pay_method == "pay-as-you-go":
+                    api_specification = f"https://www.vodafone.co.uk/mobile/pay-as-you-go/api/payg-device-purchase/{platform_session_id}/consumer/voice/{brand}/{model}/journeys/{journey_id}/device-variants/{sku}/specification"
+                    await get_specification(session,api_specification,row)
+                elif pay_method == "smart-watches-and-wearables":
+                    api_specification = f"https://www.vodafone.co.uk/mobile/pay-as-you-go/api/smart-device-purchase/v3/{platform_session_id}/consumer/watch/paym/{brand}/{model}/smart-device-groups-journey/{journey_id}/device-variants/{sku}/specification"
+                    await get_specification(session,api_specification,row)
 
-                    for group in specification_json.get("specification", {}).get("specificationGroups", []):
-                        if attribute_index > 20:
-                            break
-                        group_name = group.get("name", "").strip()
+                #####################################################################api_plans#####################################################################
+                all_plans = await fetch_plan(url, pay_method, platform_session_id, brand, model, journey_id, sku, session,size_variant)
+                #
+                for plans in all_plans:
+                    row.update(plans)
+                    # print(row)
 
-                        values = []
-                        for attr in group.get("specificationAttributes", []):
-                            val = attr.get("value", "").strip()
-                            if val:
-                                values.append(val.upper())
 
-                        if values:
-                            row[f"attributeType{attribute_index}"] = "SPECIFICATION"
-                            row[f"attributeTitle{attribute_index}"] = group_name
-                            row[f"attributeValue{attribute_index}"] = " | ".join(values)
-
-                            attribute_index += 1
                     append_to_csv(row, "products.csv")
 
 
@@ -334,9 +622,9 @@ async def wrapped_fetch(url):
 
 async def get_links_site_map(url):
     products = []
-    responses = await fetch_sitemap(url)
+    responses = await fetch_sitemap(url,config={})
     for product in responses:
-        if "/mobile/pay-monthly-contracts/" in str(product):
+        if "/mobile/pay-monthly-contracts/" in str(product) or "pay-as-you-go" in str(product) or "smart-watches-and-wearables" in str(product):
             parts = product.strip("/").split("/")
             if len(parts) > 6:
                 products.append(product)
