@@ -20,7 +20,7 @@ logger = setup_logger("logs/scraper.log")
 
 def get_standard_csv_headers():
     headers = [
-        "source", "date", "apiURL", "url", "sku", "name", "brand", "price",
+        "source", "date", "apiURL", "url", "sku", "name", "brand", "price","stock",
         "previousPrice", "onSale", "saleText", "colour", "size", "UPC", "EAN",
         "cat", "subcat1", "subcat2", "subcat3", "subcat4", "subcat5", "warranty",
         "image1", "image2", "image3", "image4", "image5", "desc", "shortDesc",
@@ -60,6 +60,7 @@ async def fetch_single_product(id_url):
     response = await fetch_url(api_url,content_type="product")
     response_json = json.loads(response)
 
+    # print(response_json)
 
     if response_json:
 
@@ -68,132 +69,121 @@ async def fetch_single_product(id_url):
         soup = BeautifulSoup(response_html, "html.parser")
 
         row = {}
-        items = response_json.get("data",{}).get("item_detail",[]).get("spu_list",[])[0].get("item_list",[])
         script_tag = soup.find("script", string=re.compile("__PRELOADED_STATE__"))
         script_text = script_tag.string
         json_text = script_text.split("=", 1)[1].strip().rstrip(";")
         specs_json = json.loads(json_text)
+        spu_list = response_json.get("data",{}).get("item_detail", {}).get("spu_list",[])
 
-        for item in items:
-            sku = item.get("item_id", "")
-            row["source"] = "xiaomi"
-            row["date"] = datetime.now().strftime("%Y-%m-%d")
-            row["apiURL"] = api_url
-            row["url"] = f"https://www.mi.com/uk/product/{id_url}/buy/?gid={sku}"
-            row["sku"] = sku
-            row["name"] = item.get("item_name","")
-            row["brand"] = "xiaomi"
-            price = item.get("price","")
-            row["price"] = price
+        for spu in spu_list:
+            items = spu.get("item_list", [])
+            for item in items:
+                is_stock = item.get("is_out_of_stock", False)
+                # print(is_stock)
+                if is_stock:
+                    row["stock"] = "N"
 
+                else:
+                    row["stock"] = "Y"
+                sku = item.get("item_id", "")
+                row["source"] = "xiaomi"
+                row["date"] = datetime.now().strftime("%Y-%m-%d")
+                row["apiURL"] = api_url
+                row["url"] = f"https://www.mi.com/uk/product/{id_url}/buy/?gid={sku}"
+                row["sku"] = sku
+                row["name"] = item.get("item_name", "")
+                row["brand"] = "xiaomi"
+                row["price"] = item.get("price", "")
 
+                previousPrice = item.get("market_price", "")
+                if previousPrice and row["price"] and previousPrice > row["price"]:
+                    row["previousPrice"] = previousPrice
+                    row["onSale"] = "Y"
+                    discount_percent = round((previousPrice - row["price"]))
+                    row["saleText"] = f"save £{discount_percent}"
+                else:
+                    row["previousPrice"] = ""
+                    row["onSale"] = ""
+                    row["saleText"] = ""
 
-            previousPrice = item.get("market_price","")
-            if previousPrice and row["price"] and previousPrice > row["price"]:
-                row["previousPrice"] = previousPrice
-                row["onSale"] = "Y"
-                discount_percent = round((previousPrice - row["price"]) )
-                row["saleText"] = f"save £{discount_percent}"
-            else:
-                row["previousPrice"] = ""
-                row["onSale"] = ""
-                row["saleText"] = ""
-            try:
-                specs_list = response_json.get("data",{}).get("item_detail",[]).get("specs_list",{}).get("sku_list",[])
-                for specs in specs_list:
-                    item_id = specs.get("item_id","")
-                    if sku == item_id:
-                        spec_values = specs.get("specs_item", [])
-                        if len(spec_values) > 0:
-                            row["colour"] = spec_values[0]
-                        if len(spec_values) > 1:
-                            row["size"] = spec_values[1]
-            except:
-                row["colour"] = ""
-                row["size"] = ""
+                try:
+                    specs_list = response_json.get("data", {}).get("item_detail", []).get("specs_list", {}).get(
+                        "sku_list", [])
+                    for specs in specs_list:
+                        item_id = specs.get("item_id", "")
+                        if sku == item_id:
+                            spec_values = specs.get("specs_item", [])
+                            if len(spec_values) > 0:
+                                row["colour"] = spec_values[0]
+                            if len(spec_values) > 1:
+                                row["size"] = spec_values[1]
+                except:
+                    row["colour"] = ""
+                    row["size"] = ""
 
+                row["UPC"] = ""
+                row["EAN"] = ""
 
-            row["UPC"] = ""
-            row["EAN"] = ""
+                categories = item.get("categories", [])
+                fields = ["cat", "subcat1", "subcat2", "subcat3", "subcat4", "subcat5"]
+                for i, cat in enumerate(categories):
+                    if i < len(fields):
+                        row[fields[i]] = cat.get("title", "")
 
-            categories = item.get("categories", [])
-            fields = ["cat", "subcat1", "subcat2", "subcat3", "subcat4", "subcat5"]
-            for i, cat in enumerate(categories):
-                if i < len(fields):
-                    row[fields[i]] = cat.get("title", "")
+                seo_desc = specs_json.get("pagedata", {}).get("seo", {}).get("description", "")
 
-            seo_desc = specs_json.get("pagedata", {}).get("seo", {}).get("description", "")
+                row["desc"] = " ".join(seo_desc.split())
+                row["shortDesc"] = ""
+                row["reviewCount"] = response_json.get("data", {}).get("review", "").get("comments_total", "")
+                row["reviewRating"] = response_json.get("data", {}).get("review", "").get("comments_star", "")
 
-            row["desc"] = " ".join(seo_desc.split())
-            row["shortDesc"] = ""
-            row["reviewCount"] = response_json.get("data",{}).get("review","").get("comments_total","")
-            row["reviewRating"] = response_json.get("data",{}).get("review","").get("comments_star","")
-            if row["reviewCount"] == 0:
-                row["reviewCount"] = ""
-                row["reviewRating"] = ""
+                row["warranty"] = ""
+                images = item.get("resource_list", [])
+                for i, image in enumerate(images[:5]):
+                    row[f"image{i + 1}"] = image.get("src", "")
 
+                data_raw = specs_json.get("pagedata", {}).get("data", "{}")
+                data_json = json.loads(data_raw)
+                attribute_index = 1
+                capture = False
+                last_title = None
 
+                for key, val in data_json.items():
+                    if not isinstance(val, dict):
+                        continue
 
-            row["warranty"] = ""
-            row["isSellingFast"] = ""
-            row["isOutletPrice"] = ""
-            if item["is_out_of_stock"] == True:
+                    text = val.get("trans") or val.get("alt")
+                    if not text:
+                        continue
 
-                row["isRestockingSoon"] = "Y"
-
-            row["isPromotion"] = "Y" if row["previousPrice"] != "" else ""
-            row["lowestPriceText"] = f"£{price}"
-            row["lowestPriceValue"] = price
-
-
-            images = item.get("resource_list", [])
-            for i, image in enumerate(images[:5]):
-                row[f"image{i + 1}"] = image.get("src", "")
-
-
-            data_raw = specs_json.get("pagedata", {}).get("data", "{}")
-            data_json = json.loads(data_raw)
-            attribute_index = 1
-            capture = False
-            last_title = None
-
-            for key, val in data_json.items():
-                if not isinstance(val, dict):
-                    continue
-
-                text = val.get("trans") or val.get("alt")
-                if not text:
-                    continue
-
-                text = text.strip()
-                if (("specifications" in text.lower() or
-                        "Processor" in text.lower()) or
-                        "RAM" in text.lower() or
-                        "Storage" in text.lower()) :
-                    capture = True
-                    continue
-                if capture and text.lower() in ["package contents", "specification", "features"]:
-                    break
-
-                if capture:
-                    if attribute_index >= 20:
+                    text = text.strip()
+                    if (("specifications" in text.lower() or
+                         "Processor" in text.lower()) or
+                            "RAM" in text.lower() or
+                            "Storage" in text.lower()):
+                        capture = True
+                        continue
+                    if capture and text.lower() in ["package contents", "specification", "features"]:
                         break
-                    if last_title is None:
-                        last_title = text
-                    else:
-                        clean_text = " ".join(text.split()).replace("*","")
-                        clean_last_title = " ".join(last_title.split()).replace("*","")
 
-                        row[f"attributeType{attribute_index}"] = "specification"
-                        row[f"attributeTitle{attribute_index}"] = clean_last_title
-                        row[f"attributeValue{attribute_index}"] = clean_text
-                        attribute_index += 1
-                        last_title = None
+                    if capture:
+                        if attribute_index >= 20:
+                            break
+                        if last_title is None:
+                            last_title = text
+                        else:
+                            clean_text = " ".join(text.split()).replace("*","")
+                            clean_last_title = " ".join(last_title.split())
 
+                            row[f"attributeType{attribute_index}"] = "specification"
+                            row[f"attributeTitle{attribute_index}"] = clean_last_title
+                            row[f"attributeValue{attribute_index}"] = clean_text
 
+                            attribute_index += 1
+                            last_title = None
 
-
-            append_to_csv(row, "products.csv")
+                # print(row)
+                append_to_csv(row, "products.csv")
 
 
 
@@ -220,7 +210,7 @@ async def extract_links():
 
     all_list_product = list(dict.fromkeys(all_list_product))
 
-    print(all_list_product)
+    # print(all_list_product)
     return all_list_product
 
 
