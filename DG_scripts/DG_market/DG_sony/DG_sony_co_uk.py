@@ -25,7 +25,7 @@ logger = setup_logger("logs/scraper.log")
 
 def get_standard_csv_headers():
     headers = [
-        "source", "date", "apiURL", "url", "sku", "name", "brand", "price",
+        "source", "date", "apiURL", "url", "sku", "name", "brand", "price","stock",
         "previousPrice", "onSale", "saleText", "colour", "size", "UPC", "EAN",
         "cat", "subcat1", "subcat2", "subcat3", "subcat4", "subcat5", "warranty",
         "image1", "image2", "image3", "image4", "image5", "desc", "shortDesc",
@@ -166,6 +166,7 @@ async def fetch_single_product(id: str):
             row["price"] = price.get("formattedValue", "")
             previousPrice = data_json.get("product", {}).get("baseOptions", {}).get("selected",{}).get("priceData", {}).get("formattedValue", {})
             row["onSale"] = ""
+            row["stock"] = "Y" if data_json.get("product", {}).get("baseOptions", {}).get("selected",{}).get("stock", {}).get("stockLevelStatus", "") == "inStock" else "N"
             if previousPrice and previousPrice != row["price"]:
                 row["previousPrice"] = previousPrice
                 row["onSale"] = "Y"
