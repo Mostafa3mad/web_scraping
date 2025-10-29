@@ -20,7 +20,7 @@ logger = setup_logger("logs/scraper.log")
 
 def get_standard_csv_headers():
     headers = [
-        "source", "date", "apiURL", "url", "sku", "name", "brand", "price",
+        "source", "date", "apiURL", "url", "sku", "name", "brand", "price","stock",
         "previousPrice", "onSale", "saleText", "colour", "size", "UPC", "EAN",
         "cat", "subcat1", "subcat2", "subcat3", "subcat4", "subcat5", "warranty",
         "image1", "image2", "image3", "image4", "image5", "desc", "shortDesc",
@@ -138,6 +138,73 @@ def get_ctegory(soup,row):
         row[field] = breadcrumbs[i] if i < len(breadcrumbs) else ""
 
 
+async def fetch_url(
+    url: str,
+    content_type: str = "html",
+    headers: Optional[Dict[str, str]] = None,
+    params: Optional[Dict[str, str]] = None,
+    data: Optional[Union[Dict[str, Any], str]] = None,
+    json_data: Optional[Dict[str, Any]] = None,
+    method: str = "GET",
+    config: Dict[str, Any] = None
+) -> str:
+    if config is None:
+        config = DEFAULT_CONFIG
+
+    max_retries = config.get("max_retries", 3)
+    min_delay = config.get("min_delay", 1.0)
+    max_delay = config.get("max_delay", 3.0)
+    save_raw = False
+
+    if content_type == "sitemap" and config.get("save_raw_sitemaps", True):
+        save_raw = True
+    elif content_type == "category" and config.get("save_raw_categories", True):
+        save_raw = True
+    elif content_type == "product" and config.get("save_raw_products", True):
+        save_raw = True
+
+    if save_raw and config.get("save_local", True):
+        cache_path = get_cache_path(url, content_type)
+        if cache_path.exists():
+            logger.info(f"Using cached version of {url} from {cache_path}")
+            with open(cache_path, "r", encoding="utf-8") as f:
+                return f.read()
+
+    if headers is None:
+        headers = get_random_headers()
+
+    for retry in range(max_retries):
+        try:
+            await asyncio.sleep(random.uniform(min_delay, max_delay))
+
+            if config.get("use_scrapingbee", False) and config.get("scrapingbee_key"):
+                response_text = await fetch_with_scrapingbee(url, headers, config)
+            else:
+                async with httpx.AsyncClient(timeout=30.0) as client:
+                    if method.upper() == "POST":
+                        response = await client.post(url=url, headers=headers, params=params, data=data, json=json_data)
+                    else:
+                        response = await client.get(url=url, headers=headers, params=params,follow_redirects=True)
+                    response.raise_for_status()
+                    response_text = response.text
+
+            if save_raw and config.get("save_local", True):
+                cache_path = get_cache_path(url, content_type)
+                cache_path.parent.mkdir(parents=True, exist_ok=True)
+                with open(cache_path, "w", encoding="utf-8") as f:
+                    f.write(response_text)
+                logger.info(f"Saved raw content to {cache_path}")
+
+            return response_text
+
+        except Exception as e:
+            logger.warning(f"Request failed. URL: {url}. Error: {repr(e)}. Attempt {retry+1}/{max_retries}")
+            if retry < max_retries - 1:
+                backoff_time = (2 ** retry) + random.uniform(0, 1)
+                logger.info(f"Backing off for {backoff_time:.2f} seconds before retry")
+                await asyncio.sleep(backoff_time)
+
+    raise RuntimeError(f"Max retries exceeded for URL: {url}")
 
 async def fetch_single_product(product_master_url):
     response_html = await fetch_url(product_master_url, content_type="product")
@@ -242,6 +309,7 @@ async def fetch_single_product(product_master_url):
 
                 attribute_index += 1
             if row["price"]:
+                row["stock"] = "Y"
                 append_to_csv(row, "products.csv")
 
 
