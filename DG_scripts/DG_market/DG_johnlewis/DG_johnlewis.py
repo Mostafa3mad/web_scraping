@@ -27,7 +27,7 @@ logger = setup_logger("logs/scraper.log")
 
 def get_standard_csv_headers():
     headers = [
-        "source", "date", "apiURL", "url", "sku", "name", "brand", "price",
+        "source", "date", "apiURL", "url", "sku", "name", "brand", "price","stock",
         "previousPrice", "onSale", "saleText", "colour", "size", "UPC", "EAN",
         "cat", "subcat1", "subcat2", "subcat3", "subcat4", "subcat5", "warranty",
         "image1", "image2", "image3", "image4", "image5", "desc", "shortDesc",
@@ -248,6 +248,12 @@ async def fetch_single_product(id: str):
             row['url'] = f"https://www.johnlewis.com{variant.get("pdpURL").get("url")}" if variant.get("pdpURL") else ""
             row['sku'] = variant.get("aliases").get("skuId") if variant.get("aliases") else ""
             row['name'] = variant.get("title") if variant.get("title") else ""
+
+            availableToOrder = variant.get("availability",{}).get("availableToOrder")
+            row["stock"] = "N"
+            if availableToOrder:
+                row["stock"] = "Y"
+
             row['price'] = variant.get("price", {}).get("value") if variant.get("price") else ""
             row['previousPrice'] = variant.get("price", {}).get("reductionHistory")[0].get("value") if variant.get("price", {}).get("reductionHistory") else variant.get("price", {}).get("value") if variant.get("price") else ""
             if float(row['previousPrice']) > float(row['price']):
