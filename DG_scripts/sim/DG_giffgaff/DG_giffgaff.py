@@ -74,55 +74,63 @@ def append_to_csv(item, filepath):
 async def extract_plan(response_data_paln):
     soup = BeautifulSoup(response_data_paln, 'html.parser')
     plans = []
-    plan_info_sections = soup.find_all('div', class_='sc-gtJxfw byUKQu')
-    for plan_info in plan_info_sections:
-        price = plan_info.find_previous('span', class_='sc-cKXybt hAYJhu')
-        if price:
-            price = re.findall(r'\d+', price.text.strip())
-            if price:
-                price = price[0]
+    group_header = soup.find('h3', {'data-testid': 'plan-group-header'})
+    parent_div = group_header.find_parent('div')
+    classes = ".".join(parent_div.get("class"))
+
+    selector = f"div.{classes}"
+    plan_groups = soup.select(selector)
+    for plan_info in plan_groups:
+        plan_cards = plan_info.select("section details summary div[data-testid='plan-info']")
+        for card in plan_cards:
+
+            price_tag = plan_info.select_one("h3 span[data-attribute='louder-regular']")
+            if price_tag:
+                price_text = price_tag.get_text(strip=True)
+                price_match = re.findall(r"\d+", price_text)
+                price = price_match[0] if price_match else "0"
             else:
                 price = "0"
-        else:
-            price = "0"
 
-        data_type = plan_info.find('h2', class_='sc-cTTdyq sc-lmUcrn hyywXO jSZYRQ')
-        if data_type:
-            data_type = data_type.text.strip()
-        else:
-            data_type = ""
+            data_type = card.select_one("div h2").get_text(strip=True)
 
-        duration = plan_info.find('h2', class_='sc-cTTdyq sc-fscmHZ hyywXO hGlodx')
-        if duration:
-            duration = re.findall(r'\d+', duration.text.strip())
-            if duration:
-                duration = duration[0]
+            duration_tag = card.select_one("h2[data-attribute='louder-regular']")
+            if not duration_tag:
+                h2s = card.find_all("h2")
+                duration_tag = h2s[1] if len(h2s) >= 2 else None
+
+            if not duration_tag:
+                small_contract = card.find(
+                    lambda t: t.name == "small" and t.get_text(strip=True).lower() in ("contract", "no contract"))
+                if small_contract:
+                    duration_tag = small_contract.find_previous("h2")
+
+            if duration_tag:
+                duration_text = duration_tag.get_text(strip=True).lower()
+                if "rolling" in duration_text:
+                    duration = "1"
+                    contract = "no contract"
+                else:
+                    m = re.search(r"\d+", duration_text)
+                    duration = m.group(0) if m else "1"
+                    contract = "contract"
             else:
                 duration = "1"
-        else:
-            duration = "1"
+                contract = "contract"
 
-        contract = plan_info.find('small', class_='sc-bWJUgm fkkceO')
-        if contract:
-            contract = contract.text.strip()
-        else:
-            contract = ""
 
-        sim_type = plan_info.find('small', class_='sc-iowXnY fzoeoU')
-        if sim_type:
-            sim_type = sim_type.text.strip()
-        else:
-            sim_type = ""
 
-        plans.append({
-            'data_type': data_type,
-            'price': price,
-            'sim': sim_type,
-            'sim_desc': "Unlimited UK calls and texts | EU roaming included up to 5 GB | Keep your number | 5G speeds at no extra cost",
-            'duration': duration,
-            'contract': contract
-        })
+
+            plans.append({
+                'data_type': data_type,
+                'price': price,
+                'sim': "data",
+                'sim_desc': "Unlimited UK calls and texts | EU roaming included up to 5 GB | Keep your number | 5G speeds at no extra cost",
+                'duration': duration,
+                'contract': contract
+            })
     return plans
+
 
 async def fetch_single_product(url: str):
 
@@ -146,13 +154,21 @@ async def fetch_single_product(url: str):
         name = product_data["phoneDetails"]["phoneDisplayName"]
         warrantyPeriod = product_data["phoneDetails"]["warrantyPeriod"]
         Specifications = product_data["phoneSpecifications"]["features"]
+        condition_mapping = {
+            "A": "Good",
+            "LN": "Like new",
+            "E": "Excellent",
+            "G": "Very good"
+        }
         for variant in variants_sku:
+            condition_code = data.get(variant, {}).get("condition", "N/A")
+            condition_name = condition_mapping.get(condition_code, "N/A")
             row["source"] = "giffgaff"
             row["date"] = datetime.now().strftime("%Y-%m-%d")
             row["apiURL"] = url
             row["url"] = url
             row["sku"] = variant
-            row["name"] = name
+            row["name"] = f"{name} {condition_name}"
             row["brand"] = Brand
             row["desc"] = ""
             row["shortDesc"] = ""
@@ -248,7 +264,6 @@ async def fetch_single_product(url: str):
 
                         append_to_csv(row, "products.csv")
 
-                        return row
 
 def extract_sim(prod, category):
     offers = prod.get("offers", {})
@@ -393,6 +408,8 @@ async def main():
     plans = await extract_sim_only(url_sim)
     urls = ["https://www.giffgaff.com/mobile-phones","https://www.giffgaff.com/mobile-phones/refurbished"]
     products = await get_products_from_sitemap(urls)
+    products = ["https://www.giffgaff.com/mobile-phones/samsung/samsung-galaxy-s23-ultra-5g/refurbished"]
+    # data = await extact_data_from_product_url(products)
     data = await extact_data_from_product_url(products)
 
 
