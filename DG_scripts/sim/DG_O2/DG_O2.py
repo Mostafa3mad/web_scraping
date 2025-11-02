@@ -125,13 +125,12 @@ async def fetch_single_product(url: str):
                     device_gallerys = device_details.get("initData", {}).get("deviceGallery", {})
                     for deviceGallery in device_gallerys:
                         if deviceGallery["color"]["name"] == color:
-                            for deviceGallery in device_gallerys:
-                                gallery_items = deviceGallery.get("galleryItems", [])
-                                for i in range(5):
-                                    if i < len(gallery_items):
-                                        row[f"image{i + 1}"] = gallery_items[i]["url"]
-                                    else:
-                                        row[f"image{i + 1}"] = ""
+                            gallery_items = deviceGallery.get("galleryItems", [])
+                            for i in range(5):
+                                if i < len(gallery_items):
+                                    row[f"image{i + 1}"] = gallery_items[i]["url"]
+                                else:
+                                    row[f"image{i + 1}"] = ""
                             break
                     row["lowestPriceValue"] = ""
                     row["reviewRating"] = ""
@@ -279,6 +278,7 @@ async def main():
     for url in products:
         if url.count('/') >= 5:
             product_urls.append(url)
+    product_urls = ["https://www.o2.co.uk/shop/samsung/galaxy-s25-ultra-5g"]
     data = await extact_data_from_product_url(product_urls)
 
 
