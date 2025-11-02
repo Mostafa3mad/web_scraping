@@ -278,7 +278,6 @@ async def main():
     for url in products:
         if url.count('/') >= 5:
             product_urls.append(url)
-    product_urls = ["https://www.o2.co.uk/shop/samsung/galaxy-s25-ultra-5g"]
     data = await extact_data_from_product_url(product_urls)
 
 
