@@ -103,48 +103,194 @@ async def get_size_value(soup):
         size_value = capacity_p_tag.contents[1].strip()
     return size_value
 
+
 async def get_plans(soup):
+    def normalize_value(val):
+        if val is None or val == "-1":
+            return "Unlimited"
+        try:
+            mb = int(val)
+            if mb >= 1000:
+                return f"{mb // 1000}GB"
+            else:
+                return f"{mb}MB"
+        except:
+            return val
+
     plans = []
+    plan_cards = soup.find_all('input', {
+        'name': 'plan-choice',
+        'type': 'radio'
+    })
 
-    plan_cards = soup.find_all('article', class_='col-xs-12 col-sm-6 col-md-12')
     if plan_cards == []:
-        return [{"monthly_cost":0, "upfront_cost": 0, "data_allowance": "", "contract_duration": 0, "sim1YearIncrease": "", "sim2YearIncrease": "", "desc": ""}]
-
+        return [
+            {"monthly_cost": 0, "upfront_cost": 0, "data_allowance": "", "contract_duration": 0, "sim1YearIncrease": "",
+             "sim2YearIncrease": "", "desc": ""}]
 
     for plan_card in plan_cards:
+        label = soup.find('label', {'for': plan_card.get('id')})
+
+
         plan_details = {}
 
         plan_details['plan_id'] = plan_card.get('data-deal-id')
-        monthly_cost_text = plan_card.find('div', class_='plan-monthly-cost').get_text(strip=True)
+        monthly_cost_text = plan_card.get("data-monthly-cost")
         monthly_cost = re.search(r'\d+(\.\d{1,2})?', monthly_cost_text)
         plan_details['monthly_cost'] = monthly_cost.group(0) if monthly_cost else None
-        upfront_cost_text = plan_card.find('div', class_='plan-upfront-cost').get_text(strip=True)
+        upfront_cost_text = plan_card.get("data-upfront-cost")
         upfront_cost = re.search(r'\d+(\.\d{1,2})?', upfront_cost_text)
         plan_details['upfront_cost'] = upfront_cost.group(0) if upfront_cost else None
-        sim_contract_name = plan_card.find('div', class_='plan-monthly-cost').get_text(strip=True)
-        sim_contract_match = re.search(r'\d+-month plan', sim_contract_name)
-        plan_details['sim_contract'] = sim_contract_match.group(0) if sim_contract_match else "N/A"
-        plan_details['data_allowance'] = plan_card.find('div', class_='data-allowance').get_text(strip=True)
-        mins_allowance_text = plan_card.find('div', class_='mins-allowance').get_text(strip=True)
-        plan_details['mins_allowance'] = mins_allowance_text if mins_allowance_text else "Unlimited"
+        sim_contract = plan_card.get("data-contract-length")
+        plan_details['sim_contract'] = sim_contract if sim_contract else "N/A"
 
-        texts_allowance_text = plan_card.find('div', class_='texts-allowance').get_text(strip=True)
-        plan_details['texts_allowance'] = texts_allowance_text if texts_allowance_text else "Unlimited"
+        data_allowance = normalize_value(plan_card.get("data-data"))
+        plan_details['data_allowance'] = data_allowance
 
-        contract_duration_text = plan_card.find('div', class_='contract-duration').get_text(strip=True)
-        contract_duration = re.search(r'\d+', contract_duration_text)
-        plan_details['contract_duration'] = contract_duration.group(0) if contract_duration else None
-        sim1_year_increase_text = plan_card.find('div', class_='plan-mrc1').get_text(strip=True)
-        sim2_year_increase_text = plan_card.find('div', class_='plan-mrc2').get_text(strip=True)
-        sim1_year_increase = re.search(r'\d+(\.\d{1,2})?', sim1_year_increase_text)
-        sim2_year_increase = re.search(r'\d+(\.\d{1,2})?', sim2_year_increase_text)
-        plan_details['sim1YearIncrease'] = sim1_year_increase.group(0) if sim1_year_increase else None
-        plan_details['sim2YearIncrease'] = sim2_year_increase.group(0) if sim2_year_increase else None
+        mins_allowance_text = normalize_value(plan_card.get("data-mins"))
+        plan_details['mins_allowance'] = mins_allowance_text
 
-        plan_details['desc'] = f"{plan_details['data_allowance']} | {plan_details['contract_duration']} | {plan_details['sim_contract']} | {plan_details['mins_allowance']} | {plan_details['texts_allowance']}"
+        texts_allowance_text = normalize_value(plan_card.get("data-mins"))
+        plan_details['texts_allowance'] = texts_allowance_text
+
+        contract_duration = plan_card.get("data-contract-length")
+        plan_details['contract_duration'] = contract_duration if contract_duration else None
+
+        mrc1 = label.find("span", class_="plan-mrc1")
+        mrc2 = label.find("span", class_="plan-mrc2")
+        sim1_year_increase = mrc1.find("strong", class_="plan-figure").get_text(strip=True) if mrc1 else None
+        sim2_year_increase = mrc2.find("strong", class_="plan-figure").get_text(strip=True) if mrc2 else None
+        plan_details['sim1YearIncrease'] = sim1_year_increase if sim1_year_increase else None
+        plan_details['sim2YearIncrease'] = sim2_year_increase if sim2_year_increase else None
+
+        plan_details[
+            'desc'] = f"data_allowance: {plan_details['data_allowance']} | contract_duration: {plan_details['contract_duration']} | sim_contract: {plan_details['sim_contract']} | mins_allowance: {plan_details['mins_allowance']} | texts_allowance: {plan_details['texts_allowance']}"
 
         plans.append(plan_details)
+
     return plans
+
+async def get_sim_deals():
+
+    url_plan_sim = "https://www.idmobile.co.uk/sim-only-deals"
+
+    response = await fetch_url(url_plan_sim,config=DEFAULT_CONFIG,headers={},content_type="product")
+    soup = BeautifulSoup(response, "html.parser")
+    plan_inputs = soup.find_all("article", {"data-plan-card-wrapper": True})
+    plans = []
+    for inp in plan_inputs:
+        label = soup.find("label", {"for": inp.get("id")})
+
+        def extract_price(inp):
+            price_tags = inp.select(".plan-monthly-cost strong.plan-figure span[itemprop='price']")
+
+            if not price_tags:
+                return None
+
+            if len(price_tags) > 1:
+                return float(price_tags[0].get_text(strip=True))
+
+            return float(price_tags[0].get_text(strip=True))
+
+        sim_price = extract_price(inp)
+
+        if inp.select_one("a[data-original-data]") :
+            sim_data_tag = inp.select_one("a[data-original-data]").get("data-original-data")
+        else:
+            strong_tag = inp.select_one(".data-allowance strong")
+            sim_data_tag = strong_tag.get_text(strip=True) if strong_tag else None
+
+        if inp.select_one("a[data-deal-tag]"):
+            simOfferData = inp.select_one("a[data-deal-tag]").get("data-deal-tag")
+        else :
+            tag_block = inp.select_one(".plan-deal-tag span[data-countdown-container]")
+            simOfferData = tag_block.get_text(strip=True) if tag_block else None
+
+        mins_tag = inp.select_one(".mins-allowance strong")
+        mins = mins_tag.get_text(strip=True) if mins_tag else inp.get("data-mins")
+        texts_tag = inp.select_one(".texts-allowance strong")
+        texts = mins_tag.get_text(strip=True) if mins_tag else inp.get("data-texts")
+
+        simContractDuration = inp.get("data-contract-length")
+
+        simDesc = f"data_allowance: {sim_data_tag} | contract_duration: {simContractDuration} | mins_allowance: {mins} | texts_allowance: {texts}"
+
+        cta = inp.find("a", class_="cta-btn")
+        plan_url = cta.get("href") if cta else None
+
+        plan = {
+
+                    "source": "idmobile",
+                    "date": datetime.now().strftime("%Y-%m-%d"),
+                    "apiURL": "",
+                    "url": f"https://www.idmobile.co.uk{plan_url}",
+                    "brand": "idmobile",
+                    "plan_type": "sim-only-deals",
+                    "simContractDuration": simContractDuration,
+                    "sim_price": sim_price,
+                    "simOfferData": simOfferData,
+                    "simContractname": f"plan of  {sim_data_tag}" if  sim_data_tag != "" else "",
+                    "sim_data": sim_data_tag,
+                    "isPhoneContractAvailableWOsim": "N",
+                    "simDesc": simDesc,
+        }
+
+
+        append_to_csv(plan, "products.csv")
+async def get_sim_deals_pay_as_go():
+    def normalize_value(val):
+        if val is None or val == "-1":
+            return "Unlimited"
+        try:
+            mb = int(val)
+            if mb >= 1000:
+                return f"{mb // 1000}GB"
+            else:
+                return f"{mb}MB"
+        except:
+            return val
+
+
+
+
+    url_sim_pay_as_go = "https://www.idmobile.co.uk/sim-only-deals/pay-as-you-go"
+    response = await fetch_url(url_sim_pay_as_go,config=DEFAULT_CONFIG,headers={},content_type="product")
+    soup = BeautifulSoup(response, "html.parser")
+    cards = soup.find_all("article", {"data-handset": "PAYIDMULTISIM"})
+
+    BASE_URL = "https://www.idmobile.co.uk"
+
+    for card in cards:
+        link = card.find("a")
+        url_sim = BASE_URL + link["href"] if link else None
+        sim_data = normalize_value(card.get("data-data"))
+        mins = normalize_value(card.get("data-mins"))
+        texts = normalize_value(card.get("data-texts"))
+        simContractDuration = card.get("data-contract-length")
+
+        simDesc = f"data_allowance: {sim_data} | contract_duration: {simContractDuration} | mins_allowance: {mins} | texts_allowance: {texts}"
+
+        price_block = card.select_one("p > span:nth-of-type(4) strong")
+        price = price_block.get_text(strip=True).replace("£", "") if price_block else None
+
+        plan = {
+            "source": "idmobile",
+            "date": datetime.now().strftime("%Y-%m-%d"),
+            "apiURL": "",
+            "url": url_sim,
+            "brand": "idmobile",
+            "plan_type": "pay-as-you-go",
+            "simContractDuration": simContractDuration,
+            "sim_price": price,
+            "simOfferData": "",
+            "simContractname": f"plan of  {sim_data}" if sim_data != "" else "",
+            "sim_data": sim_data,
+            "isPhoneContractAvailableWOsim": "N",
+            "simDesc": simDesc,
+        }
+
+
+        append_to_csv(plan, "products.csv")
 
 async def fetch_single_product(url: str):
     prodact_name = url.split("/")[-1]
@@ -184,7 +330,12 @@ async def fetch_single_product(url: str):
             row["sku"] = data_product_json["sku"]
             row["name"] = data_product_json["name"]
             row["brand"] = data_product_json["brand"]
-            row["stock"] = ""
+            availability = data_product_json.get("offers", {}).get("availability", "")
+            if availability == "OutOfStock" :
+                row["stock"] = "N"
+            if availability == "InStock" :
+                row["stock"] = "Y"
+
             overview_section = soup.find('div', class_='col-sm-offset-1 col-sm-10 col-lg-offset-2 col-lg-8')
             if overview_section:
                 header = overview_section.find('h2', class_='font-size-20')
@@ -221,7 +372,17 @@ async def fetch_single_product(url: str):
             row["isOutletPrice"] = ""
             row["lowestPriceText"] = ""
             row["saleText"] = ""
-            row["handsetOnlyCostCash"] = data_product_json.get("offers").get("price","")
+            price_product = data_product_json.get("offers").get("price","")
+            if price_product:
+                row["handsetOnlyCostCash"] = price_product
+            try:
+                if price_product == "":
+                    price_block = soup.select_one(".plan-costs .plan-monthly-cost .plan-figure")
+                    price = price_block.get_text(strip=True).replace("£", "") if price_block else None
+                    row["handsetOnlyCostCash"] = price
+
+            except:
+                pass
             row["previousPrice"] = ""
             plans = await get_plans(soup)
             for plan in plans:
@@ -342,11 +503,11 @@ async def get_links_site_map(url):
 
 
 
-
-
-
 async def main():
     create_csv_file("products.csv")
+    await get_sim_deals()
+    await get_sim_deals_pay_as_go()
+
     siteurl = "https://www.idmobile.co.uk/sitemap.xml"
     products  = await get_links_site_map(siteurl)
     data = await extact_data_from_product_url(products)
