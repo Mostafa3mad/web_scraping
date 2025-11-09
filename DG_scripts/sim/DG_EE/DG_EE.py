@@ -372,8 +372,9 @@ async def wrapped_fetch(url):
 
 async def main():
     create_csv_file("products.csv")
-    siteurl = "https://ee.co.uk/sitemap-shop-hybris.xml"
-    products  = await fetch_sitemap(siteurl)
+    # siteurl = "https://ee.co.uk/sitemap-shop-hybris.xml"
+    # products  = await fetch_sitemap(siteurl)
+    products = ["https://ee.co.uk/mobile/pay-monthly-phones-gallery/iphone-air-details"]
     data = await extact_data_from_product_url(products)
 
 

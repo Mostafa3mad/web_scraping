@@ -178,6 +178,7 @@ async def fetch_url(
                     else:
                         response = await client.get(url=url, headers=headers, params=params)
                     response.raise_for_status()
+                    # print(response.url)
                     response_text = response.text
 
             if save_raw and config.get("save_local", True):
