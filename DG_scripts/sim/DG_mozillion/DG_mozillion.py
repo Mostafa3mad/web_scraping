@@ -58,8 +58,15 @@ def append_to_csv(item, filepath):
 
 
 
+def clean_text(text: str) -> str:
+    import re
 
+    text = re.sub(r'[-•–]+', ' ', text)
+    text = re.sub(r'\s+', ' ', text)
+    text = text.strip()
+    text = re.sub(r'\s*\.\s*', '. ', text)
 
+    return text
 
 async def fetch_single_product(url: str):
 
@@ -175,6 +182,9 @@ async def fetch_single_product(url: str):
             row["apiURL"] = url_api
             row["url"] = url
             available_sims = data_product.get("available_sims", [{}])
+            if isinstance(available_sims, dict):
+
+                available_sims = list(available_sims.values())
 
             for simplan in available_sims:
                 if isinstance(simplan, dict):
@@ -185,7 +195,7 @@ async def fetch_single_product(url: str):
                 row["name"] = f"{url.split("/")[-1].replace("-","_")}_{colors.replace(" ","_")}_{capacitys}"
                 row["brand"] = url.split("/")[-2]
                 row["stock"] = ""
-                row["desc"] = combined_text
+                row["desc"] = clean_text(combined_text)
                 row["shortDesc"] = ""
                 row["videoURL"] = ""
                 row["lowestPriceValue"] = ""
@@ -215,12 +225,18 @@ async def fetch_single_product(url: str):
                 row[f"image4"] = images[3]["full_path"] if len(images) > 3 else ""
                 row[f"image5"] = images[4]["full_path"] if len(images) > 4 else ""
                 row["saleText"] = ""
+
+                if data_product.get("min_price") == None:
+                    continue
+
                 row["handsetOnlyCostCash"] = float(data_product["min_price"])
                 if row["handsetOnlyCostCash"]:
                     row["previousPrice"] = ""
 
                     plans = data_product.get("available_sims") or [{}]
+                    if isinstance(plans, dict):
 
+                        plans = list(plans.values())
                     for bundle in plans:
                         row["phoneContractDuration"] = bundle.get("durationInt", 0)
                         if "bundle" in url:
@@ -278,7 +294,67 @@ async def fetch_single_product(url: str):
                             append_to_csv(row, "products.csv")
 
 
+async def extract_plans_sim():
+    urls = ["https://www.mozillion.com/sim/pay-monthly-sim","https://www.mozillion.com/sim/data-only","https://www.mozillion.com/sim/pay-as-you-go-sim"]
+    plans = []
+    for url in urls:
+        response = await fetch_url(url,content_type="product")
 
+
+        soup = BeautifulSoup(response, 'html.parser')
+
+
+
+
+        for card in soup.select("[id^='product-card-']"):
+            price = card.select_one("h2").get_text(strip=True).split("p/m")[0]
+            h6 = card.select_one("h6").get_text(separator=" ", strip=True)
+            link = card.select_one("a[href*='sim-detail']")["href"]
+
+            if "Unlimited data" in h6:
+                sim_data = "Unlimited data"
+            else:
+                sim_data = h6.split("data")[0].strip() + " data"
+
+            if "1-Month" in h6:
+                duration = "1"
+                name = "1-Month"
+            elif "12-Month" in h6:
+                duration = "12"
+                name = "12-Months"
+            elif "24-Month" in h6:
+                duration = "24"
+                name = "24-Months"
+            else:
+                duration = ""
+                name = ""
+            if "data-only" in url:
+                simDesc = f"{sim_data} + No credit check + EU roaming + Hotspot enabled + No mid-contract price rises"
+            else:
+                simDesc = f"{sim_data} + Unlimited calls & txts + EU roaming"
+
+            plan = {
+                "source" : "mozillion",
+                "date" : datetime.now().strftime("%Y-%m-%d"),
+                "apiURL" : "",
+                "url": link,
+                "brand" : "mozillion",
+                "sim_price": price.replace("£", "").strip(),
+                "simContractname": f"{name} {sim_data} Plan",
+                "simContractDuration": duration,
+                "plan_type": url.split("/")[-1],
+                "sim_data": sim_data,
+                "simOfferData": "",
+                "sim1YearIncrease": "",
+                "sim2YearIncrease": "",
+                "sim3YearIncrease": "",
+                "simDesc": simDesc,
+            }
+            plans.append(plan)
+            plans = [dict(t) for t in {tuple(sorted(d.items())) for d in plans}]
+
+    for p in plans:
+        append_to_csv(p, "products.csv")
 
 
 
@@ -330,6 +406,10 @@ async def get_products_list(urlsite_map: str):
 
 async def main():
     create_csv_file("products.csv")
+
+    await extract_plans_sim()
+
+
     urlsite_map = "https://www.mozillion.com/sitemapxml"
     products = await get_products_list(urlsite_map)
 
